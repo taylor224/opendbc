@@ -35,6 +35,7 @@ class HyundaiAngleSteeringModel:
   GENESIS_GV70_E_2ND_GEN = 9
   HYUNDAI_AZERA_HEV_7TH = 10
   KIA_EV3 = 11
+  KIA_EV4 = 12
 
 
 # Mapping from CAR platform name → angle steering model ID.
@@ -51,6 +52,7 @@ ANGLE_STEERING_MODEL_BY_CAR: dict[str, int] = {
   "GENESIS_GV70_ELECTRIFIED_2ND_GEN":   HyundaiAngleSteeringModel.GENESIS_GV70_E_2ND_GEN,
   "HYUNDAI_AZERA_HEV_7TH_GEN":         HyundaiAngleSteeringModel.HYUNDAI_AZERA_HEV_7TH,
   "KIA_EV3":                            HyundaiAngleSteeringModel.KIA_EV3,
+  "KIA_EV4":                            HyundaiAngleSteeringModel.KIA_EV4,
 }
 
 

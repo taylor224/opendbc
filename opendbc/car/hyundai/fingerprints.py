@@ -1142,6 +1142,14 @@ FW_VERSIONS = {
       b'\xf1\x00SV11.011.041.012481000HKP_SV124_40819299211EV000',
     ],
   },
+  CAR.KIA_EV4: {
+    (Ecu.fwdRadar, 0x7d0, None): [
+      b'\xf1\x00CT1__               1.00 1.01 99110EZ000          ',
+    ],
+    (Ecu.fwdCamera, 0x7c4, None): [
+      b'\xf1\x00CT11.011.011.012511000HKP_CT125_50113099211EZ000',
+    ],
+  },
   CAR.KIA_EV6_2025: {
     (Ecu.fwdRadar, 0x7d0, None): [
       b'\xf1\x00CV__ RDR -----      1.00 1.00 99110-XG500         ',

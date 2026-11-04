@@ -28,6 +28,7 @@ enum {
   HYUNDAI_ANGLE_MODEL_GENESIS_GV70_E_2ND_GEN,    // 9
   HYUNDAI_ANGLE_MODEL_HYUNDAI_AZERA_HEV_7TH,     // 10
   HYUNDAI_ANGLE_MODEL_KIA_EV3,                   // 11
+  HYUNDAI_ANGLE_MODEL_KIA_EV4,                   // 12
 
   HYUNDAI_ANGLE_MODEL_COUNT,  // must be last — used for bounds checking
 };
@@ -134,6 +135,13 @@ static const AngleSteeringParams *hyundai_get_angle_params(uint8_t model_id) {
       .slip_factor = -0.0006258515673540325,
       .steer_ratio = 15.87,
       .wheelbase = 2.68,
+    },
+
+    // [12] KIA_EV4 — wb=2.82, sr=15.87 (steerRatio placeholder copied from KIA_EV3)
+    [HYUNDAI_ANGLE_MODEL_KIA_EV4] = {
+      .slip_factor = -0.000594780862148852,
+      .steer_ratio = 15.87,
+      .wheelbase = 2.82,
     },
   };
   // const AngleSteeringParams *result_model;

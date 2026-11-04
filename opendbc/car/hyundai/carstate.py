@@ -6,7 +6,7 @@ from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, create_button_events, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.hyundai.hyundaicanfd import CanBus
-from opendbc.car.hyundai.values import HyundaiFlags, CAR, DBC, Buttons, CarControllerParams
+from opendbc.car.hyundai.values import HyundaiFlags, CAR, DBC, Buttons, CarControllerParams, KIA_EV3_GEN_CARS
 from opendbc.car.interfaces import CarStateBase
 
 from opendbc.sunnypilot.car.hyundai.carstate_ext import CarStateExt
@@ -239,8 +239,8 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
 
     ret.brakePressed = cp.vl["TCS"]["DriverBraking"] == 1
 
-    # KIA_EV3 does not transmit DOORS_SEATBELTS (0x411)
-    if self.CP.carFingerprint != CAR.KIA_EV3:
+    # KIA_EV3-generation cars do not transmit DOORS_SEATBELTS (0x411)
+    if self.CP.carFingerprint not in KIA_EV3_GEN_CARS:
       ret.doorOpen = cp.vl["DOORS_SEATBELTS"]["DRIVER_DOOR"] == 1
       ret.seatbeltUnlatched = cp.vl["DOORS_SEATBELTS"]["DRIVER_SEATBELT"] == 0
 
@@ -264,8 +264,8 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     ret.steerFaultTemporary = cp.vl["MDPS"]["MDPS_LkaFailSta"] != 0
     if self.is_canfd_angle_steering:
       ret.steerFaultTemporary = ret.steerFaultTemporary or cp.vl["MDPS"]["MDPS_ADAS_AciFltSig_Lv2"] != 0
-      # KIA_EV3 does not transmit HOD_FD_01_100ms (0x2af)
-      if self.CP.carFingerprint != CAR.KIA_EV3:
+      # KIA_EV3-generation cars do not transmit HOD_FD_01_100ms (0x2af)
+      if self.CP.carFingerprint not in KIA_EV3_GEN_CARS:
         self.hands_on_steering_grip = cp.vl["HOD_FD_01_100ms"]["HOD_Dir_Status"]
       torque_overriding = abs(ret.steeringTorque) > self.params.STEER_THRESHOLD
       ret.steeringPressed = self.update_steering_pressed(torque_overriding, 5)
@@ -287,8 +287,8 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       if self.cruise_info_seen or cp_scc.vl_all["SCC_CONTROL"]["COUNTER"]:
         self.cruise_info_seen = True
         self.cruise_info = copy.copy(scc_info)
-    if self.CP.carFingerprint == CAR.KIA_EV3:
-      # EV3 does not transmit BLINKERS (0x413); the turn signal switch state lives in 0x3E3
+    if self.CP.carFingerprint in KIA_EV3_GEN_CARS:
+      # EV3-generation cars do not transmit BLINKERS (0x413); the turn signal switch state lives in 0x3E3
       ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS_ALT"]["LEFT_TURN_SW"],
                                                                         cp.vl["BLINKERS_ALT"]["RIGHT_TURN_SW"])
     else:
@@ -322,8 +322,8 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     prev_cruise_buttons = self.cruise_buttons[-1]
     prev_main_buttons = self.main_buttons[-1]
     prev_lda_button = self.lda_button
-    if self.CP.carFingerprint == CAR.KIA_EV3:
-      # EV3 carries all steering wheel buttons in STEERING_BUTTONS_ALT (0x10B) and broadcasts
+    if self.CP.carFingerprint in KIA_EV3_GEN_CARS:
+      # EV3-generation cars carry all steering wheel buttons in STEERING_BUTTONS_ALT (0x10B) and broadcast
       # CRUISE_BUTTONS_ALT with its button fields zeroed. The low nibble of byte 10 is a button
       # code (1=RES, 2=SET, 3=GAP, 4=CANCEL, 8=MAIN) and bit 7 the LFA button, all verified live
       button_codes = [int(b) for b in cp.vl_all["STEERING_BUTTONS_ALT"]["CRUISE_BUTTONS"]]
@@ -347,8 +347,8 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
                         *create_button_events(self.main_buttons[-1], prev_main_buttons, {1: ButtonType.mainCruise}),
                         *create_button_events(self.lda_button, prev_lda_button, {1: ButtonType.lkas})]
 
-    if self.CP.carFingerprint == CAR.KIA_EV3 and not self.CP.openpilotLongitudinalControl:
-      # EV3 does not report cruise main state on the bus (SCC_CONTROL MainMode_ACC stays 0),
+    if self.CP.carFingerprint in KIA_EV3_GEN_CARS and not self.CP.openpilotLongitudinalControl:
+      # EV3-generation cars do not report cruise main state on the bus (SCC_CONTROL MainMode_ACC stays 0),
       # so track it from main button presses; stock SCC engaging implies main is on.
       # With openpilot longitudinal, get_main_cruise below tracks the same button toggle instead.
       if any(be.type == ButtonType.mainCruise and be.pressed for be in ret.buttonEvents):
@@ -379,8 +379,8 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).CAM),
     }
 
-    if CP.carFingerprint == CAR.KIA_EV3:
-      # EV3 transmits these with a counter scheme the standard +1 check rejects
+    if CP.carFingerprint in KIA_EV3_GEN_CARS:
+      # EV3-generation cars transmit these with a counter scheme the standard +1 check rejects
       # (same quirk as the Palisade LX3 generation); data and checksums are fine
       ev3_loose_counters = {
         Bus.pt: ("ACCELERATOR", "MANUAL_SPEED_LIMIT_ASSIST"),
