@@ -189,12 +189,12 @@ class HyundaiFlags(IntFlag):
 
   CANFD_ANGLE_STEERING = 2 ** 28
 
-  CCNC = 2 ** 28
+  CCNC = 2 ** 29
 
   # HDA1 + LFA2 cars whose stock system commands steering via LFA_ALT (0xCB) on E-CAN
   # instead of the standard LFA (0x12A) message. Only set this on platforms verified
   # to require LFA_ALT; cars like KIA_EV6_2025 steer fine through LFA.
-  CANFD_LFA_ALT_STEERING = 2 ** 29
+  CANFD_LFA_ALT_STEERING = 2 ** 30
 
 
 @dataclass
