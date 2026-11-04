@@ -384,9 +384,11 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       # (same quirk as the Palisade LX3 generation); data and checksums are fine
       ev3_loose_counters = {
         Bus.pt: ("ACCELERATOR", "MANUAL_SPEED_LIMIT_ASSIST"),
-        # the camera CCNC stream intermittently skips counters, tripping canError mid-drive
-        Bus.cam: ("CCNC_0x161", "CCNC_0x162", "FR_CMR_03_50ms"),
       }
+      # the camera CCNC stream intermittently skips counters, tripping canError mid-drive.
+      # HDA2 trims (KIA_EV4) keep CCNC on the E-CAN tap and never read it, so it stays unregistered there
+      if not CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
+        ev3_loose_counters[Bus.cam] = ("CCNC_0x161", "CCNC_0x162", "FR_CMR_03_50ms")
       for bus, names in ev3_loose_counters.items():
         for name in names:
           parsers[bus].vl[name]  # register the message with the parser

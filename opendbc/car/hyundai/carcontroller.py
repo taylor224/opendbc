@@ -284,6 +284,10 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     lka_steering = self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG
     lka_steering_long = lka_steering and self.CP.openpilotLongitudinalControl
     ccnc_non_hda2 = self.CP.flags & HyundaiFlags.CCNC and not lka_steering
+    # alt button cars cancel stock cruise with a zero-accel SCC_CONTROL instead of CRUISE_BUTTONS. On LKA steering
+    # trims (KIA_EV4) the stock ADAS ECU keeps transmitting SCC_CONTROL on the E-CAN tap, so a forged frame would
+    # collide with it on the wire; fall back to the CRUISE_BUTTONS path the other HDA2 cars use
+    alt_button_cancel = self.CP.flags & HyundaiFlags.CANFD_ALT_BUTTONS and not lka_steering
 
     # steering control
     can_sends.extend(hyundaicanfd.create_steering_messages(self.packer, self.CP, self.CAN, CC.enabled, apply_steer_req, apply_torque, self.apply_angle_last
@@ -323,7 +327,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
         # cruise cancel
         if CC.cruiseControl.cancel:
           # Here we send ACC message to cancel, not buttons. Don't delay
-          if self.CP.flags & HyundaiFlags.CANFD_ALT_BUTTONS:
+          if alt_button_cancel:
             can_sends.append(hyundaicanfd.create_acc_cancel(self.packer, self.CP, self.CAN, CS.cruise_info))
             self.last_button_frame = self.frame
           elif self.cancel_counter > CANCEL_BUTTON_DELAY_FRAMES:
@@ -333,7 +337,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
 
         # cruise standstill resume
         elif CC.cruiseControl.resume:
-          if self.CP.flags & HyundaiFlags.CANFD_ALT_BUTTONS:
+          if alt_button_cancel:
             # TODO: resume for alt button cars
             pass
           else:

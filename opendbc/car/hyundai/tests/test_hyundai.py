@@ -71,6 +71,18 @@ class TestHyundaiFingerprint(unittest.TestCase):
       CP = CarInterface.get_params(CAR.KIA_EV6, fingerprint, [], False, False, False)
       assert bool(CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG) == lka_steering
 
+    # LKA steering cars without the standard CRUISE_BUTTONS message (KIA_EV3-generation HDA2 trims)
+    for std_buttons in (True, False):
+      fingerprint = gen_empty_fingerprint()
+      CAN = CanBus(None, fingerprint, True)
+      fingerprint[CAN.CAM] = [0x110]
+      fingerprint[CAN.ECAN] = [0x1cf] if std_buttons else [0x1aa, 0x10b]
+      CP = CarInterface.get_params(CAR.KIA_EV4, fingerprint, [], False, False, False)
+      assert CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG and CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG_ALT
+      assert bool(CP.flags & HyundaiFlags.CANFD_ALT_BUTTONS) != std_buttons
+      assert bool(CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CANFD_ALT_BUTTONS) != std_buttons
+      assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CCNC
+
     # radar available
     for radar in (True, False):
       fingerprint = gen_empty_fingerprint()

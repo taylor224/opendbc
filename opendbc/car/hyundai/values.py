@@ -750,12 +750,15 @@ class CAR(Platforms):
   )
   KIA_EV4 = HyundaiCanFDPlatformConfig(
     [
-      HyundaiCarDocs("Kia EV4 (with LFA2) 2025-26", "Lane Follow Assist 2", car_parts=CarParts.common([CarHarness.hyundai_a]))
+      # HDA2 trim: the ADAS DRV ECU (0x730) owns SCC/LFA on E-CAN and steers from the camera's LKAS_ALT on
+      # A-CAN, so it needs the HDA2 pinout (R harness; an A harness with its two CAN pairs flipped is pin-identical)
+      HyundaiCarDocs("Kia EV4 (with HDA2) 2025-26", "Highway Driving Assist 2", car_parts=CarParts.common([CarHarness.hyundai_r]))
     ],
     # wheelbase 2.82 m (hatchback and sedan share it); steerRatio is the KIA_EV3 value as a
     # placeholder until paramsd converges on a real EV4 (same generation C-MDPS)
     CarSpecs(wheelbase=2.82, steerRatio=15.87),
-    # same generation as KIA_EV3 (CCNC, LFA_ALT-only EPS, new-gen FW format), see KIA_EV3_GEN_CARS
+    # same generation as KIA_EV3 (CCNC, LFA_ALT-only EPS, new-gen FW format), see KIA_EV3_GEN_CARS.
+    # LKA steering is detected at runtime from LKAS_ALT (0x110) on the camera bus
     flags=HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING | HyundaiFlags.CCNC | HyundaiFlags.CANFD_LFA_ALT_STEERING,
   )
   KIA_EV9 = HyundaiCanFDPlatformConfig(
@@ -1097,7 +1100,7 @@ CANFD_CAR = CAR.with_flags(HyundaiFlags.CANFD)
 # CAN layout that differs from the other CAN FD cars: no DOORS_SEATBELTS (0x411), BLINKERS (0x413)
 # or HOD_FD_01_100ms (0x2af), every steering wheel button in STEERING_BUTTONS_ALT (0x10B), loose
 # message counters on ACCELERATOR/MSLA/CCNC, and no cruise main state on the bus. All of this was
-# verified live on KIA_EV3; KIA_EV4 is assumed to match (same generation, same FW format).
+# verified live on KIA_EV3; KIA_EV4 (HDA2 trim, same quirks seen on its E-CAN tap) matches.
 KIA_EV3_GEN_CARS = {CAR.KIA_EV3, CAR.KIA_EV4}
 
 CAMERA_SCC_CAR = CAR.with_flags(HyundaiFlags.CAMERA_SCC)

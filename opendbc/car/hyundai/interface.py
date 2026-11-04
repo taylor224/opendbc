@@ -62,6 +62,9 @@ class CarInterface(CarInterfaceBase):
         ret.flags |= HyundaiFlags.CANFD_LKA_STEER_MSG.value
         if 0x110 in fingerprint[CAN.CAM]:
           ret.flags |= HyundaiFlags.CANFD_LKA_STEER_MSG_ALT.value
+        # KIA_EV3-generation HDA2 trims (KIA_EV4) do not transmit CRUISE_BUTTONS (0x1cf) on E-CAN either
+        if 0x1cf not in fingerprint[CAN.ECAN]:
+          ret.flags |= HyundaiFlags.CANFD_ALT_BUTTONS.value
       else:
         # no LKA steering
         if 0x1cf not in fingerprint[CAN.ECAN]:
@@ -95,7 +98,9 @@ class CarInterface(CarInterfaceBase):
         ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CANFD_ANGLE_STEERING.value
         if ret.flags & HyundaiFlags.CANFD_LFA_ALT_STEERING:
           ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CANFD_LFA_ALT_STEERING.value
-      if ret.flags & HyundaiFlags.CCNC and not ret.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
+      if ret.flags & HyundaiFlags.CCNC:
+        # LKA steering (HDA2) trims keep the CCNC messages on the E-CAN tap and never drive them;
+        # the panda only uses the flag there to recognise the KIA_EV3 generation
         ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CCNC.value
 
     else:

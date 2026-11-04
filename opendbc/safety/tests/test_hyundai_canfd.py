@@ -12,7 +12,7 @@ import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerSafety
 from opendbc.safety.tests.libsafety import libsafety_py
 from opendbc.safety.tests.common import away_round, round_speed
-from opendbc.safety.tests.hyundai_common import HyundaiButtonBase, HyundaiLongitudinalBase
+from opendbc.safety.tests.hyundai_common import HyundaiButtonBase, HyundaiLongitudinalBase, Buttons, PREV_BUTTON_SAMPLES
 from opendbc.sunnypilot.car.hyundai.values import HyundaiSafetyFlagsSP
 from opendbc.car.lateral import get_max_angle_delta_vm, get_max_angle_vm, AngleSteeringLimitsVM
 from opendbc.car.hyundai.interface import CarInterface
@@ -858,6 +858,136 @@ class TestHyundaiCanfdEV3Gen(unittest.TestCase):
     self._init(long=False)
     self.assertFalse(self.safety.get_acc_main_on())
     self.assertFalse(self.safety.get_controls_allowed())
+
+
+class TestHyundaiCanfdEV3GenLKASteering(unittest.TestCase):
+  """KIA_EV3-generation HDA2 trim (KIA_EV4): LKA steering through LKAS_ALT on the relayed A-CAN while the
+  E-CAN quirks (counter-less ACCELERATOR, buttons in STEERING_BUTTONS_ALT, zeroed CRUISE_BUTTONS_ALT, no
+  CRUISE_BUTTONS) sit on the bus 1 tap. Lateral only: LKA steering angle cars get no openpilot longitudinal,
+  stock SCC comes from the ADAS ECU on bus 1.
+  """
+
+  PARAM = int(HyundaiSafetyFlags.EV_GAS | HyundaiSafetyFlags.CANFD_LKA_STEER_MSG | HyundaiSafetyFlags.CANFD_LKA_STEER_MSG_ALT |
+              HyundaiSafetyFlags.CANFD_ALT_BUTTONS | HyundaiSafetyFlags.CANFD_ANGLE_STEERING | HyundaiSafetyFlags.CCNC |
+              HyundaiSafetyFlags.CANFD_LFA_ALT_STEERING)
+  PT_BUS = 1  # E-CAN tap
+  A_BUS = 0   # relayed A-CAN, car side
+
+  def setUp(self):
+    self.packer = CANPackerSafety("hyundai_canfd_generated")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_current_safety_param_sp(encode_angle_model_id(ANGLE_STEERING_MODEL_BY_CAR[str(CAR.KIA_EV4)]))
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd, self.PARAM)
+    self.safety.init_tests()
+    self.cnt_angle_cmd = 0
+
+  def _rx(self, name, values, bus=PT_BUS):
+    return self.safety.safety_rx_hook(self.packer.make_can_msg_safety(name, bus, values))
+
+  def _tx(self, name, values, bus):
+    return self.safety.safety_tx_hook(self.packer.make_can_msg_safety(name, bus, values))
+
+  def _rx_wheel_buttons(self, code, lfa=0):
+    self.assertTrue(self._rx("STEERING_BUTTONS_ALT", {"CRUISE_BUTTONS": code, "LFA_BTN": lfa}))
+
+  def _angle_cmd(self, angle, active, bus=A_BUS):
+    self.safety.set_timer(self.cnt_angle_cmd * 10000)
+    self.cnt_angle_cmd += 1
+    values = {"ADAS_StrAnglReqVal": angle, "LKAS_ANGLE_ACTIVE": 2 if active else 1, "ADAS_ACIAnglTqRedcGainVal": 0}
+    return self._tx("LKAS_ALT", values, bus)
+
+  def test_rx_checks_on_ecan_tap(self):
+    # the EV3-generation RX check set on bus 1 is complete without CRUISE_BUTTONS (0x1cf)
+    for name in ("ACCELERATOR", "TCS", "WHEEL_SPEEDS", "MDPS", "CRUISE_BUTTONS_ALT", "STEERING_BUTTONS_ALT", "SCC_CONTROL"):
+      self.assertTrue(self._rx(name, {}), name)
+    self.assertTrue(self.safety.safety_config_valid())
+
+  def test_accelerator_counter_ignored(self):
+    # EV3-generation ACCELERATOR (0x35) does not count +1 per frame
+    for _ in range(common.MAX_WRONG_COUNTERS + 2):
+      self.assertTrue(self._rx("ACCELERATOR", {"COUNTER": 3}))
+
+  def test_main_toggle_from_wheel_buttons(self):
+    self.assertFalse(self.safety.get_acc_main_on())
+    self._rx_wheel_buttons(8)
+    self.assertTrue(self.safety.get_acc_main_on())
+    self._rx_wheel_buttons(8)  # held button must not re-toggle
+    self.assertTrue(self.safety.get_acc_main_on())
+    self._rx_wheel_buttons(0)
+    # the zeroed CRUISE_BUTTONS_ALT stream carries no main state here
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+    self.assertTrue(self.safety.get_acc_main_on())
+    self._rx_wheel_buttons(8)
+    self._rx_wheel_buttons(0)
+    self.assertFalse(self.safety.get_acc_main_on())
+
+  def test_engage_from_wheel_buttons_and_stock_scc(self):
+    # stock cruise engaging on the bus 1 tap right after SET on STEERING_BUTTONS_ALT allows controls
+    self.assertTrue(self._rx("SCC_CONTROL", {"ACCMode": 0}))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx_wheel_buttons(Buttons.SET)
+    self._rx_wheel_buttons(Buttons.NONE)
+    self.assertTrue(self._rx("SCC_CONTROL", {"ACCMode": 1}))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self.assertTrue(self._rx("SCC_CONTROL", {"ACCMode": 0}))
+    self.assertFalse(self.safety.get_controls_allowed())
+    # a SET in the zeroed CRUISE_BUTTONS_ALT stream must not count as a button press (nor age the window)
+    for _ in range(PREV_BUTTON_SAMPLES):
+      self._rx_wheel_buttons(Buttons.NONE)
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": Buttons.SET}))
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": Buttons.NONE}))
+    self.assertTrue(self._rx("SCC_CONTROL", {"ACCMode": 1}))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_cruise_buttons_tx_on_ecan_tap(self):
+    # stock cruise cancel/resume goes out as CRUISE_BUTTONS (0x1cf) on the bus 1 tap like the other HDA2 cars
+    def btn(b, bus=self.PT_BUS):
+      return self._tx("CRUISE_BUTTONS", {"CRUISE_BUTTONS": b}, bus)
+
+    self.safety.set_controls_allowed(False)
+    self.assertFalse(btn(Buttons.RESUME))
+    self.assertFalse(btn(Buttons.SET))
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(btn(Buttons.RESUME))
+    self.assertTrue(btn(Buttons.SET))
+    self.assertFalse(btn(Buttons.RESUME, bus=self.A_BUS))
+    for engaged in (True, False):
+      self.assertTrue(self._rx("SCC_CONTROL", {"ACCMode": 1 if engaged else 0}))
+      self.assertEqual(engaged, btn(Buttons.CANCEL))
+    # the ADAS ECU owns SCC_CONTROL on the tap: no forged cancel frame on either bus
+    for bus in (self.A_BUS, self.PT_BUS):
+      self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 4, "aReqRaw": 0, "aReqValue": 0}, bus))
+
+  def test_angle_steering_on_acan(self):
+    self.safety.set_controls_allowed(True)
+    self.safety.set_desired_angle_last(0)
+    self.assertTrue(self._angle_cmd(0, True))
+    self.assertFalse(self._angle_cmd(0, True, bus=self.PT_BUS))
+    self.safety.set_controls_allowed(False)
+    self.assertFalse(self._angle_cmd(0, True))
+    self.assertTrue(self._angle_cmd(0, False))
+    # LFA_ALT stays the ADAS ECU's job on this trim
+    for bus in (self.A_BUS, self.PT_BUS):
+      self.assertFalse(self._tx("LFA_ALT", {"ADAS_ActvACILvl2Sta": 0, "ADAS_StrAnglReqVal": 0}, bus))
+
+  def test_forwarding(self):
+    # the camera's LKAS_ALT / CAM_0x362 are replaced by ours, the rest of A-CAN passes through; the tap is never forwarded
+    for addr in (0x110, 0x362):
+      self.assertEqual(self.safety.safety_fwd_hook(2, addr), -1, f"camera 0x{addr:X} not blocked")
+    for addr in (0x100, 0x165, 0x2F0):
+      self.assertEqual(self.safety.safety_fwd_hook(2, addr), 0)
+    self.assertEqual(self.safety.safety_fwd_hook(0, 0x3A0), 2)
+    self.assertEqual(self.safety.safety_fwd_hook(1, 0x1A0), -1)
+
+  def test_gas_on_ecan_tap(self):
+    # gas is read from the EV ACCELERATOR message on the tap; lateral stays engaged, longitudinal is blocked
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._rx("ACCELERATOR", {"ACCELERATOR_PEDAL": 100}))
+    self.assertTrue(self.safety.get_gas_pressed_prev())
+    self.assertTrue(self.safety.get_controls_allowed())
+    self.assertFalse(self.safety.get_longitudinal_allowed())
+    self.assertTrue(self._rx("ACCELERATOR", {"ACCELERATOR_PEDAL": 0}))
+    self.assertFalse(self.safety.get_gas_pressed_prev())
 
 
 if __name__ == "__main__":
